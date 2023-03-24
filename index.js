@@ -87,7 +87,7 @@ function Scheduler(
               taskId
             );
 
-            if (taskId && taskIdTimestamp <= new Date().getTime()) {
+            if (taskId) {
               console.log(
                 `Found task ${taskId} with timestamp ${taskIdTimestamp}`
               );
@@ -125,4 +125,5 @@ const scheduler = new Scheduler(
 );
 scheduler.start();
 
-scheduler.schedule({ name: 'Test data' }, new Date().getTime());
+// Submit a task to execute 10 seconds later
+scheduler.schedule({ name: 'Test data' }, new Date().getTime() + 10000);
