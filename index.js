@@ -17,9 +17,8 @@ function RedisApi(host, port) {
 
       return results?.length ? results[0] : null;
     },
-    getRankInSortedSet: async (key, member) => {
-      const rankAndScore = await redis.zrank(key, member, 'WITHSCORES');
-      return rankAndScore?.length === 2 ? rankAndScore[1] : null;
+    getScoreInSortedSet: async (sortedSetKey, member) => {
+      return redis.zscore(sortedSetKey, member);
     },
     addToSortedSet: (sortedSetKey, member, score) => {
       return redis.zadd(sortedSetKey, score, member);
@@ -64,8 +63,12 @@ function Scheduler(
   return {
     schedule: async (data, timestamp) => {
       const taskId = await redisApi.increaseCounter('taskCounter');
+      console.log(
+        `Scheduled new task with ID ${taskId} and timestamp ${timestamp}`,
+        data
+      );
       await redisApi.setString(`task:${taskId}`, JSON.stringify(data));
-      await redisApi.addToSortedSet('sortedTasks', `task:${taskId}`, timestamp);
+      await redisApi.addToSortedSet('sortedTasks', taskId, timestamp);
     },
     start: async () => {
       console.log('Started scheduler');
@@ -79,23 +82,24 @@ function Scheduler(
           let taskId;
           do {
             taskId = await redisApi.getFirstInSortedSet('sortedTasks');
-            const taskIdTimestamp = await redisApi.getRankInSortedSet(
+            const taskIdTimestamp = await redisApi.getScoreInSortedSet(
               'sortedTasks',
               taskId
             );
 
-            if (taskId && taskIdTimestamp >= new Date().getTime()) {
+            if (taskId && taskIdTimestamp <= new Date().getTime()) {
               console.log(
                 `Found task ${taskId} with timestamp ${taskIdTimestamp}`
               );
-              const taskData = redisApi.getString(`task:${taskId}`);
+              const taskData = await redisApi.getString(`task:${taskId}`);
               try {
+                console.log(`Passing data for task ${taskId}`, taskData);
                 taskHandler(JSON.parse(taskData));
               } catch (err) {
                 console.error(err);
               }
               redisApi.removeString(`task:${taskId}`);
-              redisApi.removeFromSortedSet(taskId);
+              redisApi.removeFromSortedSet('sortedTasks', taskId);
             }
           } while (taskId);
 
@@ -113,7 +117,7 @@ function Scheduler(
 }
 
 const scheduler = new Scheduler(
-  5000,
+  5,
   (taskData) => {
     console.log('Handled task', taskData);
   },
